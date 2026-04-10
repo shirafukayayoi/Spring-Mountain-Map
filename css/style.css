@@ -131,6 +131,20 @@
   transition: width 0.15s linear;
 }
 
+.cheer-energy-fill {
+  height: 100%;
+  width: 100%;
+  background: linear-gradient(90deg, #22c55e, #10b981);
+  transition: width 0.15s linear;
+}
+
+.overheat-fill {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, #facc15, #f97316, #ef4444);
+  transition: width 0.15s linear;
+}
+
 .race-board {
   display: grid;
   gap: 0.35rem;

@@ -46,9 +46,19 @@
 ];
 
 const GLOBAL_SPEED_MULTIPLIER = 16.2;
+const SUPPORT_MAX_COMBINED = 2.35;
+const SUPPORT_MIN_MULTIPLIER = 0.8;
+const SUPPORT_MAX_MULTIPLIER = 1.8;
+
 const CHEER_DECAY_PER_SEC = 0.72;
 const CHEER_GAIN_ON_TAP = 0.75;
 const MAX_CHEER_LEVEL = 2.4;
+const CHEER_ENERGY_COST = 24;
+const CHEER_ENERGY_REGEN_PER_SEC = 14;
+const CHEER_COOLDOWN_SEC = 1.6;
+
+const OVERHEAT_COOL_PER_SEC = 0.2;
+const OVERHEAT_MAX = 1.8;
 
 function haversineMeters(lat1, lon1, lat2, lon2) {
   const R = 6371000;
@@ -64,6 +74,10 @@ function interpolate(a, b, t) {
   return a + (b - a) * t;
 }
 
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value));
+}
+
 export function createRaceController() {
   let data = null;
   let cumulative = [];
@@ -76,7 +90,10 @@ export function createRaceController() {
     runnerId: null,
     speedMultiplier: 1.0,
     finishMultiplier: 1.0,
-    cheerLevel: 0
+    cheerLevel: 0,
+    cheerEnergy: 100,
+    cheerCooldown: 0,
+    overheat: 0
   };
 
   function loadTrack(trackData) {
@@ -104,6 +121,9 @@ export function createRaceController() {
     support.speedMultiplier = 1.0;
     support.finishMultiplier = 1.0;
     support.cheerLevel = 0;
+    support.cheerEnergy = 100;
+    support.cheerCooldown = 0;
+    support.overheat = 0;
 
     elapsedTime = 0;
     isRunning = false;
@@ -116,10 +136,14 @@ export function createRaceController() {
     elapsedTime = 0;
     isRunning = false;
     runners = [];
+
     support.runnerId = null;
     support.speedMultiplier = 1.0;
     support.finishMultiplier = 1.0;
     support.cheerLevel = 0;
+    support.cheerEnergy = 100;
+    support.cheerCooldown = 0;
+    support.overheat = 0;
   }
 
   function start() {
@@ -135,7 +159,12 @@ export function createRaceController() {
     if (!data) return;
     elapsedTime = 0;
     isRunning = false;
+
     support.cheerLevel = 0;
+    support.cheerEnergy = 100;
+    support.cheerCooldown = 0;
+    support.overheat = 0;
+
     runners.forEach((runner) => {
       runner.distance = 0;
       runner.speed = runner.baseSpeed;
@@ -153,25 +182,49 @@ export function createRaceController() {
 
   function setSupportParams({ speedMultiplier, finishMultiplier }) {
     if (Number.isFinite(speedMultiplier)) {
-      support.speedMultiplier = Math.max(0.7, Math.min(1.8, speedMultiplier));
+      support.speedMultiplier = clamp(speedMultiplier, SUPPORT_MIN_MULTIPLIER, SUPPORT_MAX_MULTIPLIER);
     }
     if (Number.isFinite(finishMultiplier)) {
-      support.finishMultiplier = Math.max(0.7, Math.min(1.8, finishMultiplier));
+      support.finishMultiplier = clamp(finishMultiplier, SUPPORT_MIN_MULTIPLIER, SUPPORT_MAX_MULTIPLIER);
+    }
+
+    const sum = support.speedMultiplier + support.finishMultiplier;
+    if (sum > SUPPORT_MAX_COMBINED) {
+      const ratio = SUPPORT_MAX_COMBINED / sum;
+      support.speedMultiplier *= ratio;
+      support.finishMultiplier *= ratio;
     }
   }
 
   function cheer() {
-    if (!support.runnerId) return;
+    if (!support.runnerId) return false;
+    if (support.cheerCooldown > 0) return false;
+    if (support.cheerEnergy < CHEER_ENERGY_COST) return false;
+
     support.cheerLevel = Math.min(MAX_CHEER_LEVEL, support.cheerLevel + CHEER_GAIN_ON_TAP);
+    support.cheerEnergy = Math.max(0, support.cheerEnergy - CHEER_ENERGY_COST);
+    support.cheerCooldown = CHEER_COOLDOWN_SEC;
+    support.overheat = Math.min(OVERHEAT_MAX, support.overheat + 0.22);
+    return true;
   }
 
   function getSupportState() {
+    const combined = support.speedMultiplier + support.finishMultiplier;
+    const canCheer = !!support.runnerId && support.cheerCooldown <= 0 && support.cheerEnergy >= CHEER_ENERGY_COST;
     return {
       runnerId: support.runnerId,
       speedMultiplier: support.speedMultiplier,
       finishMultiplier: support.finishMultiplier,
       cheerLevel: support.cheerLevel,
-      cheerPercent: Math.round((support.cheerLevel / MAX_CHEER_LEVEL) * 100)
+      cheerPercent: Math.round((support.cheerLevel / MAX_CHEER_LEVEL) * 100),
+      cheerEnergy: support.cheerEnergy,
+      cheerEnergyPercent: Math.round(clamp(support.cheerEnergy, 0, 100)),
+      cheerCooldown: support.cheerCooldown,
+      overheat: support.overheat,
+      overheatPercent: Math.round((support.overheat / OVERHEAT_MAX) * 100),
+      canCheer,
+      combined,
+      combinedPercent: Math.round((combined / SUPPORT_MAX_COMBINED) * 100)
     };
   }
 
@@ -212,15 +265,25 @@ export function createRaceController() {
     };
   }
 
-  function computeSupportBoost(runner, progress) {
+  function computeSupportBoost(runner, progress, isLeader, leadGap) {
     if (runner.id !== support.runnerId) {
       return 1.0;
     }
 
     const latePhase = progress > 0.65 ? (progress - 0.65) / 0.35 : 0;
-    const finishBoost = 1 + (support.finishMultiplier - 1) * Math.max(0, Math.min(1, latePhase));
+    const finishBoost = 1 + (support.finishMultiplier - 1) * clamp(latePhase, 0, 1);
     const cheerBoost = 1 + support.cheerLevel * 0.22;
-    return support.speedMultiplier * finishBoost * cheerBoost;
+
+    support.overheat = clamp(
+      support.overheat + Math.max(0, (support.speedMultiplier * finishBoost * cheerBoost) - 1) * 0.24,
+      0,
+      OVERHEAT_MAX
+    );
+
+    const overheatPenalty = 1 - Math.min(0.42, support.overheat * 0.26);
+    const leadPressurePenalty = isLeader ? 1 - Math.min(0.18, Math.max(0, leadGap) / 1300) : 1;
+
+    return support.speedMultiplier * finishBoost * cheerBoost * overheatPenalty * leadPressurePenalty;
   }
 
   function step(deltaSec) {
@@ -228,53 +291,70 @@ export function createRaceController() {
 
     const dt = Math.min(deltaSec, 0.06);
 
-    if (isRunning) {
-      elapsedTime += dt;
-      support.cheerLevel = Math.max(0, support.cheerLevel - CHEER_DECAY_PER_SEC * dt);
+    support.cheerLevel = Math.max(0, support.cheerLevel - CHEER_DECAY_PER_SEC * dt);
+    support.cheerEnergy = Math.min(100, support.cheerEnergy + CHEER_ENERGY_REGEN_PER_SEC * dt);
+    support.cheerCooldown = Math.max(0, support.cheerCooldown - dt);
+    support.overheat = Math.max(0, support.overheat - OVERHEAT_COOL_PER_SEC * dt);
 
-      runners.forEach((runner) => {
-        if (runner.finished) return;
+    if (!isRunning) {
+      return;
+    }
 
-        const point = pointAtDistance(runner.distance);
-        const nextPoint = pointAtDistance(Math.min(totalDistance, runner.distance + 10));
-        let slope = 0;
-        if (point && nextPoint) {
-          slope = (nextPoint.ele - point.ele) / 10;
-        }
+    elapsedTime += dt;
 
-        const progress = totalDistance > 0 ? runner.distance / totalDistance : 0;
-        const phaseBoost =
-          progress < 0.35 ? runner.earlyBoost :
-          progress > 0.75 ? runner.lateBoost :
-          1.0;
+    const ordered = [...runners].sort((a, b) => b.distance - a.distance);
+    const leaderId = ordered[0]?.id ?? null;
+    const leaderDistance = ordered[0]?.distance ?? 0;
+    const secondDistance = ordered[1]?.distance ?? leaderDistance;
 
-        const uphillScale = 2.15 / runner.uphillPower;
-        const downhillScale = 1.55 * runner.uphillPower;
-        const terrainBoost = slope > 0
-          ? Math.max(0.74, 1 - slope * uphillScale)
-          : Math.min(1.25, 1 + Math.abs(slope) * downhillScale);
+    runners.forEach((runner) => {
+      if (runner.finished) return;
 
-        const rhythm = 1 + Math.sin(elapsedTime * 1.25 + runner.seed) * runner.rhythmAmp;
-        const fatigue = 1 - progress * 0.05;
-        const supportBoost = computeSupportBoost(runner, progress);
-
-        const targetSpeed = runner.baseSpeed * phaseBoost * terrainBoost * rhythm * fatigue * supportBoost * GLOBAL_SPEED_MULTIPLIER;
-
-        runner.speed = runner.speed * 0.84 + targetSpeed * 0.16;
-        runner.distance += Math.max(0.2, runner.speed) * dt;
-
-        if (runner.distance >= totalDistance) {
-          runner.distance = totalDistance;
-          runner.finished = true;
-          if (runner.finishTime == null) {
-            runner.finishTime = elapsedTime;
-          }
-        }
-      });
-
-      if (runners.every((runner) => runner.finished)) {
-        isRunning = false;
+      const point = pointAtDistance(runner.distance);
+      const nextPoint = pointAtDistance(Math.min(totalDistance, runner.distance + 10));
+      let slope = 0;
+      if (point && nextPoint) {
+        slope = (nextPoint.ele - point.ele) / 10;
       }
+
+      const progress = totalDistance > 0 ? runner.distance / totalDistance : 0;
+      const phaseBoost =
+        progress < 0.35 ? runner.earlyBoost :
+        progress > 0.75 ? runner.lateBoost :
+        1.0;
+
+      const uphillScale = 2.15 / runner.uphillPower;
+      const downhillScale = 1.55 * runner.uphillPower;
+      const terrainBoost = slope > 0
+        ? Math.max(0.74, 1 - slope * uphillScale)
+        : Math.min(1.25, 1 + Math.abs(slope) * downhillScale);
+
+      const rhythm = 1 + Math.sin(elapsedTime * 1.25 + runner.seed) * runner.rhythmAmp;
+      const fatigue = 1 - progress * 0.05;
+
+      const catchupGap = Math.max(0, leaderDistance - runner.distance);
+      const catchupBoost = 1 + Math.min(0.22, catchupGap / 2200);
+
+      const isLeader = runner.id === leaderId;
+      const leadGap = isLeader ? (runner.distance - secondDistance) : 0;
+      const supportBoost = computeSupportBoost(runner, progress, isLeader, leadGap);
+
+      const targetSpeed = runner.baseSpeed * phaseBoost * terrainBoost * rhythm * fatigue * catchupBoost * supportBoost * GLOBAL_SPEED_MULTIPLIER;
+
+      runner.speed = runner.speed * 0.84 + targetSpeed * 0.16;
+      runner.distance += Math.max(0.2, runner.speed) * dt;
+
+      if (runner.distance >= totalDistance) {
+        runner.distance = totalDistance;
+        runner.finished = true;
+        if (runner.finishTime == null) {
+          runner.finishTime = elapsedTime;
+        }
+      }
+    });
+
+    if (runners.every((runner) => runner.finished)) {
+      isRunning = false;
     }
   }
 

@@ -64,6 +64,12 @@ const supportFinishValue = document.getElementById("support-finish-value");
 const cheerButton = document.getElementById("cheer-button");
 const cheerMeterFill = document.getElementById("cheer-meter-fill");
 const cheerPercent = document.getElementById("cheer-percent");
+const cheerEnergyFill = document.getElementById("cheer-energy-fill");
+const cheerEnergyPercent = document.getElementById("cheer-energy-percent");
+const overheatFill = document.getElementById("overheat-fill");
+const overheatPercent = document.getElementById("overheat-percent");
+const supportStatusText = document.getElementById("support-status-text");
+const supportBudgetText = document.getElementById("support-budget-text");
 
 Object.entries(cameraButtons).forEach(([mode, button]) => {
   button.addEventListener("click", () => {
@@ -165,7 +171,9 @@ function setSupportControlsEnabled(enabled) {
   supportRunnerSelect.disabled = !enabled;
   supportSpeedSlider.disabled = !enabled;
   supportFinishSlider.disabled = !enabled;
-  cheerButton.disabled = !enabled;
+  if (!enabled) {
+    cheerButton.disabled = true;
+  }
 }
 
 function initSupportRunnerSelector(runnerConfigs) {
@@ -212,6 +220,16 @@ function refreshSupportUI({ syncControls = true } = {}) {
   cheerMeterFill.style.width = `${cheer}%`;
   cheerPercent.textContent = `${cheer}%`;
 
+  const energy = supportState.cheerEnergyPercent || 0;
+  cheerEnergyFill.style.width = `${energy}%`;
+  cheerEnergyPercent.textContent = `${energy}%`;
+
+  const overheat = supportState.overheatPercent || 0;
+  overheatFill.style.width = `${overheat}%`;
+  overheatPercent.textContent = `${overheat}%`;
+
+  supportBudgetText.textContent = `配分 ${supportState.combinedPercent || 0}%`;
+
   if (
     syncControls &&
     supportState.runnerId &&
@@ -219,6 +237,28 @@ function refreshSupportUI({ syncControls = true } = {}) {
     supportRunnerSelect.value !== supportState.runnerId
   ) {
     supportRunnerSelect.value = supportState.runnerId;
+  }
+
+  const controlsEnabled = !supportRunnerSelect.disabled;
+  if (!controlsEnabled) {
+    cheerButton.disabled = true;
+    cheerButton.textContent = "応援ブースト";
+    supportStatusText.textContent = "推し設定で応援可能";
+    return;
+  }
+
+  if (supportState.canCheer) {
+    cheerButton.disabled = false;
+    cheerButton.textContent = "応援ブースト";
+    supportStatusText.textContent = "応援可能";
+  } else if ((supportState.cheerCooldown || 0) > 0) {
+    cheerButton.disabled = true;
+    cheerButton.textContent = `CT ${supportState.cheerCooldown.toFixed(1)}s`;
+    supportStatusText.textContent = "クールダウン中";
+  } else {
+    cheerButton.disabled = true;
+    cheerButton.textContent = "EN不足";
+    supportStatusText.textContent = "応援エネルギー回復待ち";
   }
 }
 
