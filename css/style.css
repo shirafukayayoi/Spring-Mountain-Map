@@ -100,6 +100,37 @@
   color: white;
 }
 
+.cheer-btn {
+  border: 1px solid #f59e0b;
+  border-radius: 0.55rem;
+  background: linear-gradient(135deg, #f59e0b, #f97316);
+  color: white;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 0.25rem 0.55rem;
+  transition: all 0.15s ease;
+}
+
+.cheer-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.cheer-meter-track {
+  width: 100%;
+  height: 0.52rem;
+  border-radius: 999px;
+  background: #e2e8f0;
+  overflow: hidden;
+}
+
+.cheer-meter-fill {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, #f59e0b, #f97316, #ef4444);
+  transition: width 0.15s linear;
+}
+
 .race-board {
   display: grid;
   gap: 0.35rem;
@@ -115,6 +146,10 @@
   gap: 0.4rem;
   align-items: center;
   font-size: 11px;
+}
+
+.race-row-supported {
+  box-shadow: inset 0 0 0 1px rgba(245, 158, 11, 0.55);
 }
 
 .race-place {

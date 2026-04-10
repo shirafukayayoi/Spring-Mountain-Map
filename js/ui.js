@@ -95,6 +95,9 @@ export function renderRaceBoard(leaderboard) {
   leaderboard.forEach((runner) => {
     const row = document.createElement("div");
     row.className = "race-row";
+    if (runner.isSupported) {
+      row.classList.add("race-row-supported");
+    }
 
     const speedText = Number.isFinite(runner.speedKmh) ? `${runner.speedKmh.toFixed(1)} km/h` : "- km/h";
     const timeText = runner.finished && Number.isFinite(runner.finishTime)
@@ -104,7 +107,7 @@ export function renderRaceBoard(leaderboard) {
     row.innerHTML = `
       <span class="race-place">${runner.place}</span>
       <span class="race-name-wrap">
-        <span class="race-name">${runner.name}</span>
+        <span class="race-name">${runner.isSupported ? "★ " : ""}${runner.name}</span>
         <span class="race-style">${runner.style || "標準"}</span>
       </span>
       <span class="race-meta">${timeText}</span>

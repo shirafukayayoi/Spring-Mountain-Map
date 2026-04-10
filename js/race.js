@@ -1,4 +1,4 @@
-const RUNNER_PRESETS = [
+﻿const RUNNER_PRESETS = [
   {
     id: "runner-a",
     name: "Spring Dash",
@@ -15,7 +15,7 @@ const RUNNER_PRESETS = [
     name: "Lake Wind",
     color: "#3b82f6",
     style: "登り型",
-    baseSpeed: 7.00,
+    baseSpeed: 7.0,
     earlyBoost: 0.98,
     lateBoost: 1.04,
     uphillPower: 1.22,
@@ -40,11 +40,15 @@ const RUNNER_PRESETS = [
     baseSpeed: 6.92,
     earlyBoost: 0.94,
     lateBoost: 1.18,
-    uphillPower: 0.90,
+    uphillPower: 0.9,
     rhythmAmp: 0.13
   }
 ];
+
 const GLOBAL_SPEED_MULTIPLIER = 16.2;
+const CHEER_DECAY_PER_SEC = 0.72;
+const CHEER_GAIN_ON_TAP = 0.75;
+const MAX_CHEER_LEVEL = 2.4;
 
 function haversineMeters(lat1, lon1, lat2, lon2) {
   const R = 6371000;
@@ -68,6 +72,13 @@ export function createRaceController() {
   let elapsedTime = 0;
   let runners = [];
 
+  const support = {
+    runnerId: null,
+    speedMultiplier: 1.0,
+    finishMultiplier: 1.0,
+    cheerLevel: 0
+  };
+
   function loadTrack(trackData) {
     data = trackData;
     cumulative = [0];
@@ -89,6 +100,11 @@ export function createRaceController() {
       finishTime: null
     }));
 
+    support.runnerId = runners[0]?.id ?? null;
+    support.speedMultiplier = 1.0;
+    support.finishMultiplier = 1.0;
+    support.cheerLevel = 0;
+
     elapsedTime = 0;
     isRunning = false;
   }
@@ -100,6 +116,10 @@ export function createRaceController() {
     elapsedTime = 0;
     isRunning = false;
     runners = [];
+    support.runnerId = null;
+    support.speedMultiplier = 1.0;
+    support.finishMultiplier = 1.0;
+    support.cheerLevel = 0;
   }
 
   function start() {
@@ -115,12 +135,44 @@ export function createRaceController() {
     if (!data) return;
     elapsedTime = 0;
     isRunning = false;
+    support.cheerLevel = 0;
     runners.forEach((runner) => {
       runner.distance = 0;
       runner.speed = runner.baseSpeed;
       runner.finished = false;
       runner.finishTime = null;
     });
+  }
+
+  function setSupportRunner(runnerId) {
+    const exists = runners.some((runner) => runner.id === runnerId);
+    if (!exists) return false;
+    support.runnerId = runnerId;
+    return true;
+  }
+
+  function setSupportParams({ speedMultiplier, finishMultiplier }) {
+    if (Number.isFinite(speedMultiplier)) {
+      support.speedMultiplier = Math.max(0.7, Math.min(1.8, speedMultiplier));
+    }
+    if (Number.isFinite(finishMultiplier)) {
+      support.finishMultiplier = Math.max(0.7, Math.min(1.8, finishMultiplier));
+    }
+  }
+
+  function cheer() {
+    if (!support.runnerId) return;
+    support.cheerLevel = Math.min(MAX_CHEER_LEVEL, support.cheerLevel + CHEER_GAIN_ON_TAP);
+  }
+
+  function getSupportState() {
+    return {
+      runnerId: support.runnerId,
+      speedMultiplier: support.speedMultiplier,
+      finishMultiplier: support.finishMultiplier,
+      cheerLevel: support.cheerLevel,
+      cheerPercent: Math.round((support.cheerLevel / MAX_CHEER_LEVEL) * 100)
+    };
   }
 
   function findSegmentIndex(distance) {
@@ -156,58 +208,73 @@ export function createRaceController() {
       lon: interpolate(rawA.lon, rawB.lon, t),
       ele: interpolate(rawA.ele, rawB.ele, t),
       x: interpolate(normA.x, normB.x, t),
-      y: interpolate(normA.y, normB.y, t),
-      segmentIndex: segIndex
+      y: interpolate(normA.y, normB.y, t)
     };
   }
 
+  function computeSupportBoost(runner, progress) {
+    if (runner.id !== support.runnerId) {
+      return 1.0;
+    }
+
+    const latePhase = progress > 0.65 ? (progress - 0.65) / 0.35 : 0;
+    const finishBoost = 1 + (support.finishMultiplier - 1) * Math.max(0, Math.min(1, latePhase));
+    const cheerBoost = 1 + support.cheerLevel * 0.22;
+    return support.speedMultiplier * finishBoost * cheerBoost;
+  }
+
   function step(deltaSec) {
-    if (!isRunning || !data || runners.length === 0) return;
+    if (!data || runners.length === 0) return;
 
     const dt = Math.min(deltaSec, 0.06);
-    elapsedTime += dt;
 
-    runners.forEach((runner) => {
-      if (runner.finished) return;
+    if (isRunning) {
+      elapsedTime += dt;
+      support.cheerLevel = Math.max(0, support.cheerLevel - CHEER_DECAY_PER_SEC * dt);
 
-      const point = pointAtDistance(runner.distance);
-      const nextPoint = pointAtDistance(Math.min(totalDistance, runner.distance + 10));
-      let slope = 0;
-      if (point && nextPoint) {
-        const deltaEle = nextPoint.ele - point.ele;
-        slope = deltaEle / 10;
-      }
+      runners.forEach((runner) => {
+        if (runner.finished) return;
 
-      const progress = totalDistance > 0 ? runner.distance / totalDistance : 0;
-      const phaseBoost =
-        progress < 0.35 ? runner.earlyBoost :
-        progress > 0.75 ? runner.lateBoost :
-        1.0;
-
-      const uphillScale = 2.15 / runner.uphillPower;
-      const downhillScale = 1.55 * runner.uphillPower;
-      const terrainBoost = slope > 0
-        ? Math.max(0.74, 1 - slope * uphillScale)
-        : Math.min(1.25, 1 + Math.abs(slope) * downhillScale);
-
-      const rhythm = 1 + Math.sin(elapsedTime * 1.25 + runner.seed) * runner.rhythmAmp;
-      const fatigue = 1 - progress * 0.05;
-      const targetSpeed = runner.baseSpeed * phaseBoost * terrainBoost * rhythm * fatigue * GLOBAL_SPEED_MULTIPLIER;
-
-      runner.speed = runner.speed * 0.84 + targetSpeed * 0.16;
-      runner.distance += Math.max(0.2, runner.speed) * dt;
-
-      if (runner.distance >= totalDistance) {
-        runner.distance = totalDistance;
-        runner.finished = true;
-        if (runner.finishTime == null) {
-          runner.finishTime = elapsedTime;
+        const point = pointAtDistance(runner.distance);
+        const nextPoint = pointAtDistance(Math.min(totalDistance, runner.distance + 10));
+        let slope = 0;
+        if (point && nextPoint) {
+          slope = (nextPoint.ele - point.ele) / 10;
         }
-      }
-    });
 
-    if (runners.every((runner) => runner.finished)) {
-      isRunning = false;
+        const progress = totalDistance > 0 ? runner.distance / totalDistance : 0;
+        const phaseBoost =
+          progress < 0.35 ? runner.earlyBoost :
+          progress > 0.75 ? runner.lateBoost :
+          1.0;
+
+        const uphillScale = 2.15 / runner.uphillPower;
+        const downhillScale = 1.55 * runner.uphillPower;
+        const terrainBoost = slope > 0
+          ? Math.max(0.74, 1 - slope * uphillScale)
+          : Math.min(1.25, 1 + Math.abs(slope) * downhillScale);
+
+        const rhythm = 1 + Math.sin(elapsedTime * 1.25 + runner.seed) * runner.rhythmAmp;
+        const fatigue = 1 - progress * 0.05;
+        const supportBoost = computeSupportBoost(runner, progress);
+
+        const targetSpeed = runner.baseSpeed * phaseBoost * terrainBoost * rhythm * fatigue * supportBoost * GLOBAL_SPEED_MULTIPLIER;
+
+        runner.speed = runner.speed * 0.84 + targetSpeed * 0.16;
+        runner.distance += Math.max(0.2, runner.speed) * dt;
+
+        if (runner.distance >= totalDistance) {
+          runner.distance = totalDistance;
+          runner.finished = true;
+          if (runner.finishTime == null) {
+            runner.finishTime = elapsedTime;
+          }
+        }
+      });
+
+      if (runners.every((runner) => runner.finished)) {
+        isRunning = false;
+      }
     }
   }
 
@@ -228,7 +295,8 @@ export function createRaceController() {
         distance: runner.distance,
         remaining: Math.max(0, totalDistance - runner.distance),
         finished: runner.finished,
-        finishTime: runner.finishTime
+        finishTime: runner.finishTime,
+        isSupported: runner.id === support.runnerId
       };
     });
   }
@@ -268,6 +336,10 @@ export function createRaceController() {
     getMeta,
     getLeaderboard,
     getRunnerPositions,
-    getRunnerConfigs
+    getRunnerConfigs,
+    setSupportRunner,
+    setSupportParams,
+    cheer,
+    getSupportState
   };
 }

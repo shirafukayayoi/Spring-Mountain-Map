@@ -77,6 +77,47 @@
               <button id="camera-cinematic" class="camera-btn">シネマ</button>
             </div>
           </div>
+
+          <div class="mt-2 pt-2 border-t border-slate-200/80">
+            <div class="flex items-center justify-between gap-2 mb-2">
+              <h4 class="text-xs font-bold text-slate-600">推しランナー設定</h4>
+              <button id="cheer-button" class="cheer-btn" disabled>応援ブースト</button>
+            </div>
+
+            <div class="grid gap-2 text-[11px] text-slate-600">
+              <div class="grid gap-1">
+                <label for="support-runner-select" class="font-semibold">推しランナー</label>
+                <select id="support-runner-select" class="w-full rounded-md border border-slate-300 bg-white/90 px-2 py-1 text-xs text-slate-700"></select>
+              </div>
+
+              <div class="grid gap-1">
+                <div class="flex items-center justify-between">
+                  <label for="support-speed-slider" class="font-semibold">速度補正</label>
+                  <span id="support-speed-value" class="text-slate-500">100%</span>
+                </div>
+                <input id="support-speed-slider" type="range" min="80" max="160" step="1" value="100" />
+              </div>
+
+              <div class="grid gap-1">
+                <div class="flex items-center justify-between">
+                  <label for="support-finish-slider" class="font-semibold">終盤補正</label>
+                  <span id="support-finish-value" class="text-slate-500">100%</span>
+                </div>
+                <input id="support-finish-slider" type="range" min="80" max="170" step="1" value="100" />
+              </div>
+            </div>
+
+            <div class="mt-2">
+              <div class="flex items-center justify-between text-[11px] text-slate-500 mb-1">
+                <span>応援ゲージ</span>
+                <span id="cheer-percent">0%</span>
+              </div>
+              <div class="cheer-meter-track">
+                <div id="cheer-meter-fill" class="cheer-meter-fill"></div>
+              </div>
+            </div>
+          </div>
+
           <div id="race-board" class="race-board mt-2"></div>
         </div>
       </div>

@@ -56,10 +56,38 @@ const cameraButtons = {
   cinematic: document.getElementById("camera-cinematic")
 };
 
+const supportRunnerSelect = document.getElementById("support-runner-select");
+const supportSpeedSlider = document.getElementById("support-speed-slider");
+const supportFinishSlider = document.getElementById("support-finish-slider");
+const supportSpeedValue = document.getElementById("support-speed-value");
+const supportFinishValue = document.getElementById("support-finish-value");
+const cheerButton = document.getElementById("cheer-button");
+const cheerMeterFill = document.getElementById("cheer-meter-fill");
+const cheerPercent = document.getElementById("cheer-percent");
+
 Object.entries(cameraButtons).forEach(([mode, button]) => {
   button.addEventListener("click", () => {
     setCameraMode(mode);
   });
+});
+
+supportRunnerSelect.addEventListener("change", () => {
+  raceController.setSupportRunner(supportRunnerSelect.value);
+  refreshSupportUI();
+  refreshRunnerViews();
+});
+
+supportSpeedSlider.addEventListener("input", () => {
+  applySupportParamsFromUI();
+});
+
+supportFinishSlider.addEventListener("input", () => {
+  applySupportParamsFromUI();
+});
+
+cheerButton.addEventListener("click", () => {
+  raceController.cheer();
+  refreshSupportUI();
 });
 
 raceStartButton.addEventListener("click", () => {
@@ -81,6 +109,7 @@ raceResetButton.addEventListener("click", () => {
   raceController.reset();
   state.raceStatusMode = "idle";
   setRaceStatus("待機中");
+  refreshSupportUI();
   refreshRunnerViews();
 });
 
@@ -92,6 +121,9 @@ window.onload = async () => {
   setRaceStatus("GPX読込待ち");
   renderRaceBoard([]);
   setCameraMode("free");
+
+  setSupportControlsEnabled(false);
+  refreshSupportUI();
 
   generateDummyTerrain(state.parsedTerrain, TERRAIN_SIZE_GRID);
   updateInfoPanel(null);
@@ -112,6 +144,58 @@ function initBundledSampleSelector() {
     option.textContent = sample.name;
     sampleGpxSelect.appendChild(option);
   });
+}
+
+function setSupportControlsEnabled(enabled) {
+  supportRunnerSelect.disabled = !enabled;
+  supportSpeedSlider.disabled = !enabled;
+  supportFinishSlider.disabled = !enabled;
+  cheerButton.disabled = !enabled;
+}
+
+function initSupportRunnerSelector(runnerConfigs) {
+  supportRunnerSelect.innerHTML = "";
+  runnerConfigs.forEach((runner) => {
+    const option = document.createElement("option");
+    option.value = runner.id;
+    option.textContent = `${runner.name} (${runner.style})`;
+    supportRunnerSelect.appendChild(option);
+  });
+
+  const supportState = raceController.getSupportState();
+  if (supportState.runnerId) {
+    supportRunnerSelect.value = supportState.runnerId;
+  }
+}
+
+function applySupportParamsFromUI() {
+  const speedPct = Number(supportSpeedSlider.value);
+  const finishPct = Number(supportFinishSlider.value);
+  raceController.setSupportParams({
+    speedMultiplier: speedPct / 100,
+    finishMultiplier: finishPct / 100
+  });
+  refreshSupportUI();
+}
+
+function refreshSupportUI() {
+  const supportState = raceController.getSupportState();
+
+  const speedPct = Math.round((supportState.speedMultiplier || 1) * 100);
+  const finishPct = Math.round((supportState.finishMultiplier || 1) * 100);
+
+  supportSpeedSlider.value = String(speedPct);
+  supportFinishSlider.value = String(finishPct);
+  supportSpeedValue.textContent = `${speedPct}%`;
+  supportFinishValue.textContent = `${finishPct}%`;
+
+  const cheer = supportState.cheerPercent || 0;
+  cheerMeterFill.style.width = `${cheer}%`;
+  cheerPercent.textContent = `${cheer}%`;
+
+  if (supportState.runnerId) {
+    supportRunnerSelect.value = supportState.runnerId;
+  }
 }
 
 function getBundledSampleById(sampleId) {
@@ -234,6 +318,7 @@ function applyData(data) {
 
   raceController.loadTrack(data);
   const runnerConfigs = raceController.getRunnerConfigs();
+  initSupportRunnerSelector(runnerConfigs);
   sceneController.setRunners(runnerConfigs);
   mapController.setRunners(runnerConfigs);
 
@@ -241,7 +326,9 @@ function applyData(data) {
   state.raceUiElapsed = 0;
   setRaceControlsEnabled(true);
   setRaceStatus("待機中");
+  setSupportControlsEnabled(true);
 
+  refreshSupportUI();
   refreshRunnerViews();
 }
 
@@ -264,6 +351,10 @@ function clearRouteState() {
   setRaceControlsEnabled(false);
   setRaceStatus("GPX読込待ち");
   renderRaceBoard([]);
+
+  setSupportControlsEnabled(false);
+  supportRunnerSelect.innerHTML = "";
+  refreshSupportUI();
 }
 
 function focusSpot(index) {
@@ -298,10 +389,11 @@ function handleFrameTick(deltaSec) {
   }
 
   state.raceUiElapsed += deltaSec;
-  if (state.raceUiElapsed < 0.2) {
+  if (state.raceUiElapsed < 0.12) {
     return;
   }
   state.raceUiElapsed = 0;
+  refreshSupportUI();
   renderRaceBoard(leaderboard);
 
   if (meta.allFinished && state.raceStatusMode !== "finished") {
