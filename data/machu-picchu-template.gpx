@@ -1,0 +1,32 @@
+﻿<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="Spring-Mountain-Map Template" xmlns="http://www.topografix.com/GPX/1/1">
+  <metadata>
+    <name>Machu Picchu Template</name>
+  </metadata>
+  <trk>
+    <name>Machu Picchu (Peru) Template</name>
+    <trkseg>
+      <trkpt lat="-13.1619" lon="-72.5450"><ele>2422</ele></trkpt>
+      <trkpt lat="-13.1624" lon="-72.5446"><ele>2440</ele></trkpt>
+      <trkpt lat="-13.1630" lon="-72.5443"><ele>2468</ele></trkpt>
+      <trkpt lat="-13.1637" lon="-72.5440"><ele>2491</ele></trkpt>
+      <trkpt lat="-13.1644" lon="-72.5438"><ele>2510</ele></trkpt>
+      <trkpt lat="-13.1652" lon="-72.5437"><ele>2542</ele></trkpt>
+      <trkpt lat="-13.1660" lon="-72.5435"><ele>2584</ele></trkpt>
+      <trkpt lat="-13.1667" lon="-72.5432"><ele>2618</ele></trkpt>
+      <trkpt lat="-13.1672" lon="-72.5427"><ele>2651</ele></trkpt>
+      <trkpt lat="-13.1675" lon="-72.5421"><ele>2684</ele></trkpt>
+      <trkpt lat="-13.1674" lon="-72.5414"><ele>2702</ele></trkpt>
+      <trkpt lat="-13.1670" lon="-72.5408"><ele>2668</ele></trkpt>
+      <trkpt lat="-13.1663" lon="-72.5404"><ele>2625</ele></trkpt>
+      <trkpt lat="-13.1655" lon="-72.5403"><ele>2591</ele></trkpt>
+      <trkpt lat="-13.1648" lon="-72.5406"><ele>2550</ele></trkpt>
+      <trkpt lat="-13.1642" lon="-72.5411"><ele>2511</ele></trkpt>
+      <trkpt lat="-13.1637" lon="-72.5418"><ele>2483</ele></trkpt>
+      <trkpt lat="-13.1634" lon="-72.5426"><ele>2467</ele></trkpt>
+      <trkpt lat="-13.1632" lon="-72.5434"><ele>2450</ele></trkpt>
+      <trkpt lat="-13.1629" lon="-72.5442"><ele>2437</ele></trkpt>
+      <trkpt lat="-13.1625" lon="-72.5448"><ele>2428</ele></trkpt>
+    </trkseg>
+  </trk>
+</gpx>

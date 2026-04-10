@@ -128,9 +128,60 @@ export function createSpotsFromData(data) {
   const end = pts[s.endIndex];
 
   return [
-    { id: "start", name: "開始点", desc: `標高 ${start.rawEle}m`, x: start.x, y: start.y, lat: start.lat, lon: start.lon, rawEle: start.rawEle, icon: "play", color: "bg-emerald-500", iconColor: "text-emerald-600", bg: "bg-emerald-50", hover: "hover:border-emerald-300", index: s.startIndex },
-    { id: "summit", name: "最高点", desc: `標高 ${summit.rawEle}m`, x: summit.x, y: summit.y, lat: summit.lat, lon: summit.lon, rawEle: summit.rawEle, icon: "flag", color: "bg-rose-500", iconColor: "text-rose-600", bg: "bg-rose-50", hover: "hover:border-rose-300", index: s.summitIndex },
-    { id: "end", name: "終了点", desc: `標高 ${end.rawEle}m`, x: end.x, y: end.y, lat: end.lat, lon: end.lon, rawEle: end.rawEle, icon: "square", color: "bg-amber-500", iconColor: "text-amber-600", bg: "bg-amber-50", hover: "hover:border-amber-300", index: s.endIndex }
+    {
+      id: "start",
+      name: "開始視点",
+      desc: `標高 ${start.rawEle}m`,
+      x: start.x,
+      y: start.y,
+      lat: start.lat,
+      lon: start.lon,
+      rawEle: start.rawEle,
+      icon: "play",
+      color: "bg-emerald-500",
+      iconColor: "text-emerald-600",
+      bg: "bg-emerald-50",
+      hover: "hover:border-emerald-300",
+      index: s.startIndex,
+      cameraOffset: { x: 10, y: 4, z: 17 },
+      lookHeight: 1.1
+    },
+    {
+      id: "summit",
+      name: "最高点視点",
+      desc: `標高 ${summit.rawEle}m`,
+      x: summit.x,
+      y: summit.y,
+      lat: summit.lat,
+      lon: summit.lon,
+      rawEle: summit.rawEle,
+      icon: "flag",
+      color: "bg-red-600",
+      iconColor: "text-red-600",
+      bg: "bg-red-50",
+      hover: "hover:border-red-300",
+      index: s.summitIndex,
+      cameraOffset: { x: -13, y: 7, z: 11 },
+      lookHeight: 1.4
+    },
+    {
+      id: "end",
+      name: "終了視点",
+      desc: `標高 ${end.rawEle}m`,
+      x: end.x,
+      y: end.y,
+      lat: end.lat,
+      lon: end.lon,
+      rawEle: end.rawEle,
+      icon: "square",
+      color: "bg-amber-500",
+      iconColor: "text-amber-600",
+      bg: "bg-amber-50",
+      hover: "hover:border-amber-300",
+      index: s.endIndex,
+      cameraOffset: { x: 12, y: 4.5, z: -16 },
+      lookHeight: 1.1
+    }
   ].sort((a, b) => a.index - b.index);
 }
 

@@ -1,17 +1,33 @@
-﻿import { DEFAULT_GPX_PATH, TERRAIN_SIZE_GRID } from "./constants.js";
+﻿import { BUNDLED_GPX_SAMPLES, DEFAULT_GPX_PATH, TERRAIN_SIZE_GRID } from "./constants.js";
 import { parseGPX, createSpotsFromData, createDummySpots } from "./gpx.js";
 import { generateDummyTerrain, buildTerrainFromGPX } from "./terrain.js";
-import { setLoading, setStatus, showDefaultError, hideDefaultError, renderSpotList, updateInfoPanel } from "./ui.js";
+import {
+  setLoading,
+  setStatus,
+  showDefaultError,
+  hideDefaultError,
+  renderSpotList,
+  updateInfoPanel,
+  setRaceControlsEnabled,
+  setRaceStatus,
+  renderRaceBoard
+} from "./ui.js";
 import { createMapController } from "./map2d.js";
 import { createSceneController } from "./scene3d.js";
+import { createRaceController } from "./race.js";
 
 const state = {
   parsedTerrain: [],
   spots: createDummySpots(),
-  currentGpxData: null
+  currentGpxData: null,
+  raceUiElapsed: 0,
+  raceStatusMode: "idle",
+  cameraMode: "free"
 };
 
+const raceController = createRaceController();
 const mapController = createMapController("map");
+
 const sceneController = createSceneController({
   containerId: "canvas-container",
   labelsContainerId: "labels-container",
@@ -19,16 +35,63 @@ const sceneController = createSceneController({
   terrainGridSize: TERRAIN_SIZE_GRID,
   getSpots: () => state.spots,
   getCurrentGpx: () => state.currentGpxData,
-  onResize: () => mapController.resize()
+  onResize: () => mapController.resize(),
+  onTick: handleFrameTick
 });
 
 const gpxInput = document.getElementById("gpx-input");
+const sampleGpxSelect = document.getElementById("sample-gpx-select");
 document.getElementById("gpx-button").addEventListener("click", () => gpxInput.click());
 document.getElementById("gpx-button-fallback").addEventListener("click", () => gpxInput.click());
 gpxInput.addEventListener("change", handleGPXUpload);
+sampleGpxSelect.addEventListener("change", handleBundledSampleChange);
+
+const raceStartButton = document.getElementById("race-start");
+const racePauseButton = document.getElementById("race-pause");
+const raceResetButton = document.getElementById("race-reset");
+const cameraButtons = {
+  free: document.getElementById("camera-free"),
+  chase: document.getElementById("camera-chase"),
+  front: document.getElementById("camera-front"),
+  cinematic: document.getElementById("camera-cinematic")
+};
+
+Object.entries(cameraButtons).forEach(([mode, button]) => {
+  button.addEventListener("click", () => {
+    setCameraMode(mode);
+  });
+});
+
+raceStartButton.addEventListener("click", () => {
+  raceController.start();
+  state.raceStatusMode = "running";
+  setRaceStatus("レース中");
+  if (state.cameraMode === "free") {
+    setCameraMode("chase");
+  }
+});
+
+racePauseButton.addEventListener("click", () => {
+  raceController.pause();
+  state.raceStatusMode = "paused";
+  setRaceStatus("一時停止");
+});
+
+raceResetButton.addEventListener("click", () => {
+  raceController.reset();
+  state.raceStatusMode = "idle";
+  setRaceStatus("待機中");
+  refreshRunnerViews();
+});
 
 window.onload = async () => {
   lucide.createIcons();
+
+  initBundledSampleSelector();
+  setRaceControlsEnabled(false);
+  setRaceStatus("GPX読込待ち");
+  renderRaceBoard([]);
+  setCameraMode("free");
 
   generateDummyTerrain(state.parsedTerrain, TERRAIN_SIZE_GRID);
   updateInfoPanel(null);
@@ -40,39 +103,80 @@ window.onload = async () => {
   await loadDefaultGPX();
 };
 
+function initBundledSampleSelector() {
+  sampleGpxSelect.innerHTML = "";
+
+  BUNDLED_GPX_SAMPLES.forEach((sample) => {
+    const option = document.createElement("option");
+    option.value = sample.id;
+    option.textContent = sample.name;
+    sampleGpxSelect.appendChild(option);
+  });
+}
+
+function getBundledSampleById(sampleId) {
+  return BUNDLED_GPX_SAMPLES.find((sample) => sample.id === sampleId) || null;
+}
+
+function getDefaultBundledSample() {
+  return BUNDLED_GPX_SAMPLES.find((sample) => sample.path === DEFAULT_GPX_PATH) || BUNDLED_GPX_SAMPLES[0] || null;
+}
+
+function setCameraMode(mode) {
+  state.cameraMode = mode;
+  sceneController.setCameraMode(mode);
+  Object.entries(cameraButtons).forEach(([key, button]) => {
+    button.classList.toggle("camera-btn-active", key === mode);
+  });
+}
+
 async function loadDefaultGPX() {
-  setLoading(true, "既定サンプルを読み込み中...");
-  setStatus("既定サンプルを読み込み中...");
+  const defaultSample = getDefaultBundledSample();
+  if (!defaultSample) {
+    clearRouteState();
+    return;
+  }
+
+  sampleGpxSelect.value = defaultSample.id;
+  await loadBundledSample(defaultSample, true);
+}
+
+async function handleBundledSampleChange(event) {
+  const sample = getBundledSampleById(event.target.value);
+  if (!sample) {
+    return;
+  }
+  await loadBundledSample(sample, false);
+}
+
+async function loadBundledSample(sample, isStartup) {
+  const loadingMessage = isStartup ? "既定サンプルを読み込み中..." : `テンプレート読込中: ${sample.name}`;
+  setLoading(true, loadingMessage);
+  setStatus(loadingMessage);
   hideDefaultError();
 
   try {
-    const response = await fetch(DEFAULT_GPX_PATH, { cache: "no-store" });
+    const response = await fetch(sample.path, { cache: "no-store" });
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}`);
     }
 
     const xmlText = await response.text();
+    const fileName = sample.path.split("/").pop() || `${sample.id}.gpx`;
     const data = parseGPX(xmlText, {
-      source: "default",
-      fileName: "koruldi-lakes.gpx",
-      displayName: "Koruldi Lakes Hike"
+      source: "bundled",
+      fileName,
+      displayName: sample.name
     });
 
     applyData(data);
-    setStatus("既定サンプルを表示中（Koruldi Lakes Hike）");
+    sampleGpxSelect.value = sample.id;
+    setStatus(`テンプレートを表示中（${sample.name}）`);
   } catch (error) {
     console.error(error);
-    setStatus("既定GPXの読込失敗。GPX選択で手動ロードできます。", true);
-    showDefaultError("既定GPX (data/koruldi-lakes.gpx) の読み込みに失敗しました。GPX選択から手動で読み込んでください。");
-
-    state.currentGpxData = null;
-    state.spots = createDummySpots();
-    generateDummyTerrain(state.parsedTerrain, TERRAIN_SIZE_GRID);
-
-    sceneController.rebuild();
-    mapController.update(null, state.spots);
-    updateInfoPanel(null);
-    renderSpotList(state.spots, focusSpot);
+    setStatus("テンプレートGPXの読込失敗。GPX選択で手動ロードできます。", true);
+    showDefaultError(`テンプレートGPX (${sample.path}) の読み込みに失敗しました。GPX選択から手動で読み込んでください。`);
+    clearRouteState();
   } finally {
     setLoading(false);
     lucide.createIcons();
@@ -127,6 +231,39 @@ function applyData(data) {
   mapController.update(data, state.spots);
   updateInfoPanel(data);
   renderSpotList(state.spots, focusSpot);
+
+  raceController.loadTrack(data);
+  const runnerConfigs = raceController.getRunnerConfigs();
+  sceneController.setRunners(runnerConfigs);
+  mapController.setRunners(runnerConfigs);
+
+  state.raceStatusMode = "idle";
+  state.raceUiElapsed = 0;
+  setRaceControlsEnabled(true);
+  setRaceStatus("待機中");
+
+  refreshRunnerViews();
+}
+
+function clearRouteState() {
+  state.currentGpxData = null;
+  state.spots = createDummySpots();
+  generateDummyTerrain(state.parsedTerrain, TERRAIN_SIZE_GRID);
+
+  sceneController.rebuild();
+  mapController.update(null, state.spots);
+  updateInfoPanel(null);
+  renderSpotList(state.spots, focusSpot);
+
+  raceController.clearTrack();
+  sceneController.setRunners([]);
+  mapController.setRunners([]);
+  setCameraMode("free");
+
+  state.raceStatusMode = "empty";
+  setRaceControlsEnabled(false);
+  setRaceStatus("GPX読込待ち");
+  renderRaceBoard([]);
 }
 
 function focusSpot(index) {
@@ -135,4 +272,43 @@ function focusSpot(index) {
 
   sceneController.flyToSpot(index);
   mapController.flyToSpot(spot);
+}
+
+function refreshRunnerViews(updateBoard = true) {
+  const positions = raceController.getRunnerPositions();
+  const leaderboard = raceController.getLeaderboard();
+  sceneController.updateRunnerPositions(positions);
+  mapController.updateRunnerPositions(positions);
+  if (leaderboard.length > 0) {
+    sceneController.setCameraTargetRunner(leaderboard[0].id);
+  }
+  if (updateBoard) {
+    renderRaceBoard(leaderboard);
+  }
+  return leaderboard;
+}
+
+function handleFrameTick(deltaSec) {
+  raceController.step(deltaSec);
+  const leaderboard = refreshRunnerViews(false);
+
+  const meta = raceController.getMeta();
+  if (!meta.ready) {
+    return;
+  }
+
+  state.raceUiElapsed += deltaSec;
+  if (state.raceUiElapsed < 0.2) {
+    return;
+  }
+  state.raceUiElapsed = 0;
+  renderRaceBoard(leaderboard);
+
+  if (meta.allFinished && state.raceStatusMode !== "finished") {
+    state.raceStatusMode = "finished";
+    setRaceStatus("レース終了");
+  } else if (meta.running && state.raceStatusMode !== "running") {
+    state.raceStatusMode = "running";
+    setRaceStatus("レース中");
+  }
 }

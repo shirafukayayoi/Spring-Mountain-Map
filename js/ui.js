@@ -70,3 +70,46 @@ export function updateInfoPanel(data) {
   set("info-ele-gain", `+${Math.round(s.ascent)}m / -${Math.round(s.descent)}m`);
   set("info-track-name", `トラック名: ${data.trackName}`);
 }
+
+function formatTime(seconds) {
+  const sec = Math.max(0, Math.floor(seconds));
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
+
+export function setRaceControlsEnabled(enabled) {
+  document.getElementById("race-start").disabled = !enabled;
+  document.getElementById("race-pause").disabled = !enabled;
+  document.getElementById("race-reset").disabled = !enabled;
+}
+
+export function setRaceStatus(text) {
+  document.getElementById("race-status").textContent = text;
+}
+
+export function renderRaceBoard(leaderboard) {
+  const board = document.getElementById("race-board");
+  board.innerHTML = "";
+
+  leaderboard.forEach((runner) => {
+    const row = document.createElement("div");
+    row.className = "race-row";
+
+    const speedText = Number.isFinite(runner.speedKmh) ? `${runner.speedKmh.toFixed(1)} km/h` : "- km/h";
+    const timeText = runner.finished && Number.isFinite(runner.finishTime)
+      ? `GOAL ${formatTime(runner.finishTime)}`
+      : `${speedText} | 残り ${(runner.remaining / 1000).toFixed(2)}km`;
+
+    row.innerHTML = `
+      <span class="race-place">${runner.place}</span>
+      <span class="race-name-wrap">
+        <span class="race-name">${runner.name}</span>
+        <span class="race-style">${runner.style || "標準"}</span>
+      </span>
+      <span class="race-meta">${timeText}</span>
+    `;
+    row.style.borderLeft = `4px solid ${runner.color}`;
+    board.appendChild(row);
+  });
+}

@@ -1,0 +1,36 @@
+﻿<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="Spring-Mountain-Map Template" xmlns="http://www.topografix.com/GPX/1/1">
+  <metadata>
+    <name>Chamonix Valley Template</name>
+  </metadata>
+  <trk>
+    <name>Chamonix Valley (France) Template</name>
+    <trkseg>
+      <trkpt lat="45.9230" lon="6.8688"><ele>1032</ele></trkpt>
+      <trkpt lat="45.9234" lon="6.8696"><ele>1041</ele></trkpt>
+      <trkpt lat="45.9239" lon="6.8704"><ele>1058</ele></trkpt>
+      <trkpt lat="45.9245" lon="6.8711"><ele>1085</ele></trkpt>
+      <trkpt lat="45.9251" lon="6.8719"><ele>1112</ele></trkpt>
+      <trkpt lat="45.9259" lon="6.8726"><ele>1148</ele></trkpt>
+      <trkpt lat="45.9267" lon="6.8733"><ele>1192</ele></trkpt>
+      <trkpt lat="45.9274" lon="6.8740"><ele>1231</ele></trkpt>
+      <trkpt lat="45.9282" lon="6.8748"><ele>1268</ele></trkpt>
+      <trkpt lat="45.9290" lon="6.8756"><ele>1310</ele></trkpt>
+      <trkpt lat="45.9298" lon="6.8765"><ele>1356</ele></trkpt>
+      <trkpt lat="45.9305" lon="6.8774"><ele>1405</ele></trkpt>
+      <trkpt lat="45.9311" lon="6.8784"><ele>1462</ele></trkpt>
+      <trkpt lat="45.9315" lon="6.8793"><ele>1509</ele></trkpt>
+      <trkpt lat="45.9319" lon="6.8803"><ele>1565</ele></trkpt>
+      <trkpt lat="45.9313" lon="6.8796"><ele>1528</ele></trkpt>
+      <trkpt lat="45.9306" lon="6.8789"><ele>1476</ele></trkpt>
+      <trkpt lat="45.9297" lon="6.8781"><ele>1418</ele></trkpt>
+      <trkpt lat="45.9288" lon="6.8771"><ele>1350</ele></trkpt>
+      <trkpt lat="45.9279" lon="6.8760"><ele>1289</ele></trkpt>
+      <trkpt lat="45.9270" lon="6.8750"><ele>1227</ele></trkpt>
+      <trkpt lat="45.9261" lon="6.8739"><ele>1164</ele></trkpt>
+      <trkpt lat="45.9252" lon="6.8728"><ele>1110</ele></trkpt>
+      <trkpt lat="45.9244" lon="6.8716"><ele>1068</ele></trkpt>
+      <trkpt lat="45.9235" lon="6.8702"><ele>1042</ele></trkpt>
+    </trkseg>
+  </trk>
+</gpx>

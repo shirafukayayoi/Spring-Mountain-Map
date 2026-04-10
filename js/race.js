@@ -1,0 +1,273 @@
+const RUNNER_PRESETS = [
+  {
+    id: "runner-a",
+    name: "Spring Dash",
+    color: "#ef4444",
+    style: "先行",
+    baseSpeed: 7.35,
+    earlyBoost: 1.11,
+    lateBoost: 0.98,
+    uphillPower: 0.95,
+    rhythmAmp: 0.12
+  },
+  {
+    id: "runner-b",
+    name: "Lake Wind",
+    color: "#3b82f6",
+    style: "登り型",
+    baseSpeed: 7.00,
+    earlyBoost: 0.98,
+    lateBoost: 1.04,
+    uphillPower: 1.22,
+    rhythmAmp: 0.08
+  },
+  {
+    id: "runner-c",
+    name: "Hill Star",
+    color: "#10b981",
+    style: "持久",
+    baseSpeed: 7.18,
+    earlyBoost: 1.03,
+    lateBoost: 1.03,
+    uphillPower: 1.05,
+    rhythmAmp: 0.07
+  },
+  {
+    id: "runner-d",
+    name: "Snow Flash",
+    color: "#f59e0b",
+    style: "差し",
+    baseSpeed: 6.92,
+    earlyBoost: 0.94,
+    lateBoost: 1.18,
+    uphillPower: 0.90,
+    rhythmAmp: 0.13
+  }
+];
+const GLOBAL_SPEED_MULTIPLIER = 16.2;
+
+function haversineMeters(lat1, lon1, lat2, lon2) {
+  const R = 6371000;
+  const toRad = Math.PI / 180;
+  const dLat = (lat2 - lat1) * toRad;
+  const dLon = (lon2 - lon1) * toRad;
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * toRad) * Math.cos(lat2 * toRad) * Math.sin(dLon / 2) ** 2;
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
+function interpolate(a, b, t) {
+  return a + (b - a) * t;
+}
+
+export function createRaceController() {
+  let data = null;
+  let cumulative = [];
+  let totalDistance = 0;
+  let isRunning = false;
+  let elapsedTime = 0;
+  let runners = [];
+
+  function loadTrack(trackData) {
+    data = trackData;
+    cumulative = [0];
+    totalDistance = 0;
+
+    for (let i = 1; i < data.rawPoints.length; i++) {
+      const prev = data.rawPoints[i - 1];
+      const curr = data.rawPoints[i];
+      totalDistance += haversineMeters(prev.lat, prev.lon, curr.lat, curr.lon);
+      cumulative.push(totalDistance);
+    }
+
+    runners = RUNNER_PRESETS.map((preset, index) => ({
+      ...preset,
+      seed: index * 1.37 + 0.5,
+      distance: 0,
+      speed: preset.baseSpeed,
+      finished: false,
+      finishTime: null
+    }));
+
+    elapsedTime = 0;
+    isRunning = false;
+  }
+
+  function clearTrack() {
+    data = null;
+    cumulative = [];
+    totalDistance = 0;
+    elapsedTime = 0;
+    isRunning = false;
+    runners = [];
+  }
+
+  function start() {
+    if (!data || runners.length === 0) return;
+    isRunning = true;
+  }
+
+  function pause() {
+    isRunning = false;
+  }
+
+  function reset() {
+    if (!data) return;
+    elapsedTime = 0;
+    isRunning = false;
+    runners.forEach((runner) => {
+      runner.distance = 0;
+      runner.speed = runner.baseSpeed;
+      runner.finished = false;
+      runner.finishTime = null;
+    });
+  }
+
+  function findSegmentIndex(distance) {
+    let left = 0;
+    let right = cumulative.length - 1;
+    while (left < right) {
+      const mid = Math.floor((left + right) / 2);
+      if (cumulative[mid] < distance) {
+        left = mid + 1;
+      } else {
+        right = mid;
+      }
+    }
+    return Math.max(1, left);
+  }
+
+  function pointAtDistance(distance) {
+    if (!data || data.rawPoints.length < 2) return null;
+
+    const clamped = Math.max(0, Math.min(distance, totalDistance));
+    const segIndex = findSegmentIndex(clamped);
+    const d0 = cumulative[segIndex - 1];
+    const d1 = cumulative[segIndex];
+    const t = d1 - d0 > 0 ? (clamped - d0) / (d1 - d0) : 0;
+
+    const rawA = data.rawPoints[segIndex - 1];
+    const rawB = data.rawPoints[segIndex];
+    const normA = data.points[segIndex - 1];
+    const normB = data.points[segIndex];
+
+    return {
+      lat: interpolate(rawA.lat, rawB.lat, t),
+      lon: interpolate(rawA.lon, rawB.lon, t),
+      ele: interpolate(rawA.ele, rawB.ele, t),
+      x: interpolate(normA.x, normB.x, t),
+      y: interpolate(normA.y, normB.y, t),
+      segmentIndex: segIndex
+    };
+  }
+
+  function step(deltaSec) {
+    if (!isRunning || !data || runners.length === 0) return;
+
+    const dt = Math.min(deltaSec, 0.06);
+    elapsedTime += dt;
+
+    runners.forEach((runner) => {
+      if (runner.finished) return;
+
+      const point = pointAtDistance(runner.distance);
+      const nextPoint = pointAtDistance(Math.min(totalDistance, runner.distance + 10));
+      let slope = 0;
+      if (point && nextPoint) {
+        const deltaEle = nextPoint.ele - point.ele;
+        slope = deltaEle / 10;
+      }
+
+      const progress = totalDistance > 0 ? runner.distance / totalDistance : 0;
+      const phaseBoost =
+        progress < 0.35 ? runner.earlyBoost :
+        progress > 0.75 ? runner.lateBoost :
+        1.0;
+
+      const uphillScale = 2.15 / runner.uphillPower;
+      const downhillScale = 1.55 * runner.uphillPower;
+      const terrainBoost = slope > 0
+        ? Math.max(0.74, 1 - slope * uphillScale)
+        : Math.min(1.25, 1 + Math.abs(slope) * downhillScale);
+
+      const rhythm = 1 + Math.sin(elapsedTime * 1.25 + runner.seed) * runner.rhythmAmp;
+      const fatigue = 1 - progress * 0.05;
+      const targetSpeed = runner.baseSpeed * phaseBoost * terrainBoost * rhythm * fatigue * GLOBAL_SPEED_MULTIPLIER;
+
+      runner.speed = runner.speed * 0.84 + targetSpeed * 0.16;
+      runner.distance += Math.max(0.2, runner.speed) * dt;
+
+      if (runner.distance >= totalDistance) {
+        runner.distance = totalDistance;
+        runner.finished = true;
+        if (runner.finishTime == null) {
+          runner.finishTime = elapsedTime;
+        }
+      }
+    });
+
+    if (runners.every((runner) => runner.finished)) {
+      isRunning = false;
+    }
+  }
+
+  function getRunnerPositions() {
+    return runners.map((runner) => {
+      const point = pointAtDistance(runner.distance);
+      return {
+        id: runner.id,
+        name: runner.name,
+        color: runner.color,
+        lat: point ? point.lat : null,
+        lon: point ? point.lon : null,
+        x: point ? point.x : 0,
+        y: point ? point.y : 0,
+        style: runner.style,
+        speedMps: runner.speed,
+        speedKmh: runner.speed * 3.6,
+        distance: runner.distance,
+        remaining: Math.max(0, totalDistance - runner.distance),
+        finished: runner.finished,
+        finishTime: runner.finishTime
+      };
+    });
+  }
+
+  function getLeaderboard() {
+    return getRunnerPositions()
+      .sort((a, b) => b.distance - a.distance)
+      .map((runner, index) => ({ ...runner, place: index + 1 }));
+  }
+
+  function getMeta() {
+    return {
+      ready: !!data,
+      running: isRunning,
+      elapsedTime,
+      totalDistance,
+      allFinished: runners.length > 0 && runners.every((runner) => runner.finished)
+    };
+  }
+
+  function getRunnerConfigs() {
+    return runners.map((runner) => ({
+      id: runner.id,
+      name: runner.name,
+      color: runner.color,
+      style: runner.style
+    }));
+  }
+
+  return {
+    loadTrack,
+    clearTrack,
+    start,
+    pause,
+    reset,
+    step,
+    getMeta,
+    getLeaderboard,
+    getRunnerPositions,
+    getRunnerConfigs
+  };
+}
