@@ -112,34 +112,64 @@ export function createSceneController({
   }
 
   function generateForest() {
-    const count = 3500;
-    const geo = new THREE.SphereGeometry(0.8, 6, 6);
-    geo.scale(1, 1.35, 1);
+    const count = 2200;
+    const geo = new THREE.SphereGeometry(0.72, 6, 6);
+    geo.scale(1, 1.15, 1);
     geo.translate(0, 1, 0);
 
-    instancedTrees = new THREE.InstancedMesh(geo, new THREE.MeshStandardMaterial({ roughness: 0.8 }), count);
+    instancedTrees = new THREE.InstancedMesh(
+      geo,
+      new THREE.MeshStandardMaterial({
+        roughness: 0.86
+      }),
+      count
+    );
     instancedTrees.castShadow = true;
 
     const dummy = new THREE.Object3D();
     const color = new THREE.Color();
     let added = 0;
+    const routeSamples = [];
+    const current = getCurrentGpx();
+    if (current && Array.isArray(current.points)) {
+      const step = Math.max(1, Math.floor(current.points.length / 120));
+      for (let i = 0; i < current.points.length; i += step) {
+        routeSamples.push({ x: current.points[i].x, y: current.points[i].y });
+      }
+    }
+    const routeClearRadiusSq = 7.0 * 7.0;
+    const centerClearRadiusSq = 11.5 * 11.5;
 
     for (let i = 0; i < count * 5 && added < count; i++) {
       const x = (Math.random() - 0.5) * 110;
       const y = (Math.random() - 0.5) * 110;
       if (Math.hypot(x, y) > 55) continue;
+      if (x * x + y * y < centerClearRadiusSq) continue;
+
+      if (routeSamples.length > 0) {
+        let nearRoute = false;
+        for (let j = 0; j < routeSamples.length; j++) {
+          const rx = x - routeSamples[j].x;
+          const ry = y - routeSamples[j].y;
+          if (rx * rx + ry * ry < routeClearRadiusSq) {
+            nearRoute = true;
+            break;
+          }
+        }
+        if (nearRoute) continue;
+      }
 
       const z = elevation(x, y);
       if (z <= 0.5) continue;
 
       dummy.position.set(x, z, -y);
-      const s = 0.5 + Math.random();
+      const s = 0.44 + Math.random() * 0.72;
       dummy.scale.set(s, s, s);
       dummy.updateMatrix();
       instancedTrees.setMatrixAt(added, dummy.matrix);
 
       const h = 0.28 + Math.random() * 0.08;
-      color.setHSL(h, 0.38 + Math.random() * 0.2, 0.34 + Math.random() * 0.18);
+      color.setHSL(h, 0.30 + Math.random() * 0.14, 0.34 + Math.random() * 0.10);
       instancedTrees.setColorAt(added, color);
       added++;
     }
