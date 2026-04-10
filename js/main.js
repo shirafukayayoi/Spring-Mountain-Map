@@ -72,10 +72,25 @@ Object.entries(cameraButtons).forEach(([mode, button]) => {
 });
 
 supportRunnerSelect.addEventListener("change", () => {
-  raceController.setSupportRunner(supportRunnerSelect.value);
+  applySupportRunnerFromUI();
+});
+
+supportRunnerSelect.addEventListener("input", () => {
+  applySupportRunnerFromUI();
+});
+
+function applySupportRunnerFromUI() {
+  const ok = raceController.setSupportRunner(supportRunnerSelect.value);
+  if (!ok) {
+    const fallback = raceController.getSupportState().runnerId;
+    if (fallback) {
+      supportRunnerSelect.value = fallback;
+    }
+    return;
+  }
   refreshSupportUI();
   refreshRunnerViews();
-});
+}
 
 supportSpeedSlider.addEventListener("input", () => {
   applySupportParamsFromUI();
@@ -178,14 +193,18 @@ function applySupportParamsFromUI() {
   refreshSupportUI();
 }
 
-function refreshSupportUI() {
+function refreshSupportUI({ syncControls = true } = {}) {
   const supportState = raceController.getSupportState();
 
   const speedPct = Math.round((supportState.speedMultiplier || 1) * 100);
   const finishPct = Math.round((supportState.finishMultiplier || 1) * 100);
 
-  supportSpeedSlider.value = String(speedPct);
-  supportFinishSlider.value = String(finishPct);
+  if (syncControls && document.activeElement !== supportSpeedSlider) {
+    supportSpeedSlider.value = String(speedPct);
+  }
+  if (syncControls && document.activeElement !== supportFinishSlider) {
+    supportFinishSlider.value = String(finishPct);
+  }
   supportSpeedValue.textContent = `${speedPct}%`;
   supportFinishValue.textContent = `${finishPct}%`;
 
@@ -193,7 +212,12 @@ function refreshSupportUI() {
   cheerMeterFill.style.width = `${cheer}%`;
   cheerPercent.textContent = `${cheer}%`;
 
-  if (supportState.runnerId) {
+  if (
+    syncControls &&
+    supportState.runnerId &&
+    document.activeElement !== supportRunnerSelect &&
+    supportRunnerSelect.value !== supportState.runnerId
+  ) {
     supportRunnerSelect.value = supportState.runnerId;
   }
 }
@@ -393,7 +417,7 @@ function handleFrameTick(deltaSec) {
     return;
   }
   state.raceUiElapsed = 0;
-  refreshSupportUI();
+  refreshSupportUI({ syncControls: false });
   renderRaceBoard(leaderboard);
 
   if (meta.allFinished && state.raceStatusMode !== "finished") {
