@@ -250,7 +250,15 @@ function refreshSupportUI({ syncControls = true } = {}) {
   if (supportState.canCheer) {
     cheerButton.disabled = false;
     cheerButton.textContent = "応援ブースト";
-    supportStatusText.textContent = "応援可能";
+    if (supportState.isOverheated) {
+      supportStatusText.textContent = `過熱中: 出力 ${supportState.overheatPenaltyPercent}%`;
+    } else {
+      supportStatusText.textContent = "応援可能";
+    }
+  } else if (supportState.isOverheated && (supportState.cheerCooldown || 0) <= 0) {
+    cheerButton.disabled = true;
+    cheerButton.textContent = "過熱中";
+    supportStatusText.textContent = `失速ペナルティ中 (${supportState.overheatPenaltyPercent}%)`;
   } else if ((supportState.cheerCooldown || 0) > 0) {
     cheerButton.disabled = true;
     cheerButton.textContent = `CT ${supportState.cheerCooldown.toFixed(1)}s`;

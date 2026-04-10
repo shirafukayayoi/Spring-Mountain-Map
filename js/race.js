@@ -57,8 +57,11 @@ const CHEER_ENERGY_COST = 24;
 const CHEER_ENERGY_REGEN_PER_SEC = 14;
 const CHEER_COOLDOWN_SEC = 1.6;
 
-const OVERHEAT_COOL_PER_SEC = 0.2;
-const OVERHEAT_MAX = 1.8;
+const OVERHEAT_COOL_PER_SEC = 0.24;
+const OVERHEAT_MAX = 2.2;
+const OVERHEAT_SOFT_THRESHOLD = 0.9;
+const OVERHEAT_HARD_THRESHOLD = 1.35;
+const CHEER_STREAK_WINDOW_SEC = 4.0;
 
 function haversineMeters(lat1, lon1, lat2, lon2) {
   const R = 6371000;
@@ -93,7 +96,9 @@ export function createRaceController() {
     cheerLevel: 0,
     cheerEnergy: 100,
     cheerCooldown: 0,
-    overheat: 0
+    overheat: 0,
+    cheerStreak: 0,
+    lastCheerTime: -999
   };
 
   function loadTrack(trackData) {
@@ -124,6 +129,8 @@ export function createRaceController() {
     support.cheerEnergy = 100;
     support.cheerCooldown = 0;
     support.overheat = 0;
+    support.cheerStreak = 0;
+    support.lastCheerTime = -999;
 
     elapsedTime = 0;
     isRunning = false;
@@ -144,6 +151,8 @@ export function createRaceController() {
     support.cheerEnergy = 100;
     support.cheerCooldown = 0;
     support.overheat = 0;
+    support.cheerStreak = 0;
+    support.lastCheerTime = -999;
   }
 
   function start() {
@@ -164,6 +173,8 @@ export function createRaceController() {
     support.cheerEnergy = 100;
     support.cheerCooldown = 0;
     support.overheat = 0;
+    support.cheerStreak = 0;
+    support.lastCheerTime = -999;
 
     runners.forEach((runner) => {
       runner.distance = 0;
@@ -201,10 +212,21 @@ export function createRaceController() {
     if (support.cheerCooldown > 0) return false;
     if (support.cheerEnergy < CHEER_ENERGY_COST) return false;
 
+    const sinceLastCheer = elapsedTime - support.lastCheerTime;
+    if (sinceLastCheer <= CHEER_STREAK_WINDOW_SEC) {
+      support.cheerStreak += 1;
+    } else {
+      support.cheerStreak = 0;
+    }
+
     support.cheerLevel = Math.min(MAX_CHEER_LEVEL, support.cheerLevel + CHEER_GAIN_ON_TAP);
     support.cheerEnergy = Math.max(0, support.cheerEnergy - CHEER_ENERGY_COST);
     support.cheerCooldown = CHEER_COOLDOWN_SEC;
-    support.overheat = Math.min(OVERHEAT_MAX, support.overheat + 0.22);
+    support.overheat = Math.min(
+      OVERHEAT_MAX,
+      support.overheat + 0.22 + Math.min(0.55, support.cheerStreak * 0.16)
+    );
+    support.lastCheerTime = elapsedTime;
     return true;
   }
 
@@ -222,6 +244,8 @@ export function createRaceController() {
       cheerCooldown: support.cheerCooldown,
       overheat: support.overheat,
       overheatPercent: Math.round((support.overheat / OVERHEAT_MAX) * 100),
+      overheatPenaltyPercent: Math.round(computeOverheatPenalty(support.overheat) * 100),
+      isOverheated: support.overheat >= OVERHEAT_SOFT_THRESHOLD,
       canCheer,
       combined,
       combinedPercent: Math.round((combined / SUPPORT_MAX_COMBINED) * 100)
@@ -265,6 +289,23 @@ export function createRaceController() {
     };
   }
 
+  function computeOverheatPenalty(overheat) {
+    const softRatio = clamp(
+      (overheat - OVERHEAT_SOFT_THRESHOLD) / (OVERHEAT_HARD_THRESHOLD - OVERHEAT_SOFT_THRESHOLD),
+      0,
+      1
+    );
+    const hardRatio = clamp(
+      (overheat - OVERHEAT_HARD_THRESHOLD) / (OVERHEAT_MAX - OVERHEAT_HARD_THRESHOLD),
+      0,
+      1
+    );
+
+    const softPenalty = 1 - softRatio * 0.45;
+    const hardPenalty = 1 - hardRatio * 0.65;
+    return softPenalty * hardPenalty;
+  }
+
   function computeSupportBoost(runner, progress, isLeader, leadGap) {
     if (runner.id !== support.runnerId) {
       return 1.0;
@@ -272,7 +313,12 @@ export function createRaceController() {
 
     const latePhase = progress > 0.65 ? (progress - 0.65) / 0.35 : 0;
     const finishBoost = 1 + (support.finishMultiplier - 1) * clamp(latePhase, 0, 1);
-    const cheerBoost = 1 + support.cheerLevel * 0.22;
+    const hardRatio = clamp(
+      (support.overheat - OVERHEAT_HARD_THRESHOLD) / (OVERHEAT_MAX - OVERHEAT_HARD_THRESHOLD),
+      0,
+      1
+    );
+    const cheerBoost = 1 + support.cheerLevel * 0.22 * (1 - hardRatio * 0.8);
 
     support.overheat = clamp(
       support.overheat + Math.max(0, (support.speedMultiplier * finishBoost * cheerBoost) - 1) * 0.24,
@@ -280,7 +326,7 @@ export function createRaceController() {
       OVERHEAT_MAX
     );
 
-    const overheatPenalty = 1 - Math.min(0.42, support.overheat * 0.26);
+    const overheatPenalty = computeOverheatPenalty(support.overheat);
     const leadPressurePenalty = isLeader ? 1 - Math.min(0.18, Math.max(0, leadGap) / 1300) : 1;
 
     return support.speedMultiplier * finishBoost * cheerBoost * overheatPenalty * leadPressurePenalty;
